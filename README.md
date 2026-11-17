@@ -10,14 +10,17 @@ by 37signals.
 - Writes one note per message: `Basecamp/<Project>/Messages/<date> <title>.md`.
 - Puts the message's comments under a **Comments** heading in the same note.
 - Adds properties: `basecamp_id`, `basecamp_url`, `project`, `author`, `created`, `updated` and
-  `comments`.
+  `comments`, plus `bulletin_hash`, a fingerprint Bulletin uses to tell whether you've edited the
+  note.
 - Converts Basecamp formatting to Markdown. Mentions become `@Name` and highlights become
   `==highlight==`. Images and files become links back to Basecamp; they aren't downloaded.
 - On later pulls, fetches only messages that are new or have changed since the last pull, including
   messages with new comments.
 - Renames a note when its message's title changes, and updates links to it.
 - **Never overwrites your edits.** If you've changed a note since Bulletin last wrote it, the note
-  is skipped and counted in the summary.
+  is skipped and counted in the summary. Changing a note's properties counts as an edit.
+- Recognizes notes it wrote before by `basecamp_id`, so reinstalling Bulletin or moving notes
+  doesn't create duplicates.
 
 Bulletin only reads from Basecamp. It never creates, edits or deletes anything there.
 

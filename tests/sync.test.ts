@@ -28,6 +28,7 @@ function memoryStore() {
 		read: async p => files.get(p) ?? null,
 		write: async (p, c) => { files.set(p, c); },
 		rename: async (a, b) => { files.set(b, files.get(a)!); files.delete(a); },
+		findById: async id => [...files].find(([, c]) => c.includes(`\nbasecamp_id: ${id}\n`))?.[0] ?? null,
 	};
 	return { files, store };
 }
@@ -92,4 +93,49 @@ test('same date and title get distinct files', async () => {
 	const { files, store } = memoryStore();
 	await pull(fakeBasecamp([[message(2, 'Same', '2026-11-03T00:00:00Z'), message(1, 'Same', '2026-11-02T00:00:00Z')]]).bc, store, fresh(), strip, opts);
 	assert.deepEqual([...files.keys()].sort(), ['Basecamp/Proj/Messages/2026-11-01 Same (1).md', 'Basecamp/Proj/Messages/2026-11-01 Same.md']);
+});
+
+test('after a reinstall, existing notes are taken over by basecamp_id, not duplicated', async () => {
+	const { files, store } = memoryStore();
+	const pages = [[message(1, 'A', '2026-11-02T00:00:00Z')]];
+	await pull(fakeBasecamp(pages).bc, store, fresh(), strip, opts);
+	const state = fresh(); // plugin data lost
+	const r = await pull(fakeBasecamp(pages).bc, store, state, strip, opts);
+	assert.equal(r.unchanged, 1);
+	assert.deepEqual([...files.keys()], ['Basecamp/Proj/Messages/2026-11-01 A.md']);
+	assert.equal(state.notes['1']?.path, 'Basecamp/Proj/Messages/2026-11-01 A.md');
+	// And it's tracked again: a later change updates it in place.
+	const r2 = await pull(fakeBasecamp([[message(1, 'A', '2026-11-05T00:00:00Z')]]).bc, store, state, strip, opts);
+	assert.deepEqual(r2.updated, ['Basecamp/Proj/Messages/2026-11-01 A.md']);
+});
+
+test('after a reinstall, a note that differs is skipped, not duplicated or overwritten', async () => {
+	const { files, store } = memoryStore();
+	await pull(fakeBasecamp([[message(1, 'A', '2026-11-02T00:00:00Z')]]).bc, store, fresh(), strip, opts);
+	const path = 'Basecamp/Proj/Messages/2026-11-01 A.md';
+	files.set(path, files.get(path) + '\nmy own note\n');
+	const r = await pull(fakeBasecamp([[message(1, 'A', '2026-11-04T00:00:00Z')]]).bc, store, fresh(), strip, opts);
+	assert.deepEqual(r.skipped, [path]);
+	assert.equal(files.size, 1);
+	assert.match(files.get(path)!, /my own note/);
+});
+
+test('an untouched note moved by the user is updated where it now is', async () => {
+	const state = fresh();
+	const { files, store } = memoryStore();
+	await pull(fakeBasecamp([[message(1, 'A', '2026-11-02T00:00:00Z')]]).bc, store, state, strip, opts);
+	await store.rename('Basecamp/Proj/Messages/2026-11-01 A.md', 'Elsewhere/A.md');
+	const r = await pull(fakeBasecamp([[message(1, 'A', '2026-11-04T00:00:00Z')]]).bc, store, state, strip, opts);
+	assert.deepEqual(r.updated, ['Elsewhere/A.md']);
+	assert.deepEqual([...files.keys()], ['Elsewhere/A.md']);
+});
+
+test('after a reinstall, an untouched but out-of-date note is updated', async () => {
+	const { files, store } = memoryStore();
+	await pull(fakeBasecamp([[message(1, 'A', '2026-11-02T00:00:00Z')]]).bc, store, fresh(), strip, opts);
+	const r = await pull(fakeBasecamp([[message(1, 'A', '2026-11-04T00:00:00Z', 1)]], { 1: [{ id: 5, content: '<div>new comment</div>', created_at: '2026-11-04T00:00:00Z', app_url: 'x', creator: { id: 2, name: 'Sam' } }] }).bc, store, fresh(), strip, opts);
+	const path = 'Basecamp/Proj/Messages/2026-11-01 A.md';
+	assert.deepEqual(r.updated, [path]);
+	assert.equal(files.size, 1);
+	assert.match(files.get(path)!, /new comment/);
 });

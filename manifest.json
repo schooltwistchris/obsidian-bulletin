@@ -1,7 +1,7 @@
 {
 	"id": "bulletin",
 	"name": "Bulletin",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"minAppVersion": "1.11.4",
 	"description": "Pull message boards and their comments from Basecamp into your vault.",
 	"author": "schooltwistchris",

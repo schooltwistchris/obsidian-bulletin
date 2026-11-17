@@ -120,7 +120,19 @@ export default class BulletinPlugin extends Plugin {
 
 	private store(): NoteStore {
 		const vault = this.app.vault;
+		let byId: Map<number, string> | null = null;
 		return {
+			findById: async id => {
+				// Built once per pull from Obsidian's metadata cache; no file reads.
+				if (!byId) {
+					byId = new Map();
+					for (const f of vault.getMarkdownFiles()) {
+						const bcId: unknown = this.app.metadataCache.getFileCache(f)?.frontmatter?.basecamp_id;
+						if (typeof bcId === 'number') byId.set(bcId, f.path);
+					}
+				}
+				return byId.get(id) ?? null;
+			},
 			read: async path => {
 				const f = vault.getAbstractFileByPath(normalizePath(path));
 				return f instanceof TFile ? vault.read(f) : null;

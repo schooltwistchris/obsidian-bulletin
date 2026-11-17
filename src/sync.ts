@@ -1,5 +1,5 @@
 import type { Basecamp, Message } from './api';
-import { hash, notePath, renderNote, ToMarkdown } from './render';
+import { hash, isUntouched, notePath, renderNote, ToMarkdown } from './render';
 
 /** The few vault operations a pull needs; Obsidian's vault in the plugin, a Map in tests. */
 export interface NoteStore {
@@ -8,6 +8,8 @@ export interface NoteStore {
 	write(path: string, content: string): Promise<void>;
 	/** Moves a note, updating links to it. */
 	rename(from: string, to: string): Promise<void>;
+	/** Path of a note whose basecamp_id property is this ID, if any. */
+	findById(id: number): Promise<string | null>;
 }
 
 export interface NoteRecord {
@@ -91,7 +93,25 @@ async function pullOne(bc: Basecamp, store: NoteStore, state: SyncState, toMarkd
 			result.updated.push(target);
 			return;
 		}
-		// The note was deleted or moved outside the plugin: write it fresh.
+	}
+
+	// No note where the record says (or no record, e.g. after a reinstall). Look for one Bulletin
+	// wrote earlier before creating another.
+	const existing = await store.findById(msg.id);
+	if (existing !== null) {
+		const current = await store.read(existing);
+		// Take it over only if it's provably untouched: identical to what we'd write now, still matching
+		// the fingerprint inside it, or what we last wrote and then moved. Otherwise it may hold the
+		// user's edits, so leave it alone.
+		if (current !== null && current !== content && !isUntouched(current) && hash(current) !== record?.hash) {
+			result.skipped.push(existing);
+			return;
+		}
+		if (current !== content) await store.write(existing, content);
+		state.notes[key] = { path: existing, hash: hash(content), updatedAt: msg.updated_at };
+		if (current === content) result.unchanged++;
+		else result.updated.push(existing);
+		return;
 	}
 
 	target = await freePath(store, target, msg.id);

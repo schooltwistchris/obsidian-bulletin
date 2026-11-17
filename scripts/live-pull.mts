@@ -26,6 +26,7 @@ const store = {
 	read: (p: string) => readFile(join(outDir, p), 'utf8').catch(() => null),
 	write: async (p: string, c: string) => { await mkdir(dirname(join(outDir, p)), { recursive: true }); await writeFile(join(outDir, p), c); },
 	rename: async (a: string, b: string) => { await mkdir(dirname(join(outDir, b)), { recursive: true }); await rename(join(outDir, a), join(outDir, b)); },
+	findById: async () => null,
 };
 
 const t0 = Date.now();

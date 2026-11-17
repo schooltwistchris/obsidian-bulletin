@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { notePath, prepareHtml, renderNote, sanitizeFilename } from '../src/render';
+import { isUntouched, notePath, prepareHtml, renderNote, sanitizeFilename } from '../src/render';
 import type { Message } from '../src/api';
 
 const mention = `<bc-attachment sgid="x" content-type="application/vnd.basecamp.mention" content='&lt;bc-mention&gt;Jane&lt;/bc-mention&gt;'><figure>
@@ -45,4 +45,15 @@ test('note has quoted frontmatter, body and comments', () => {
 	assert.match(note, /^---\nbasecamp_id: 42\nbasecamp_url: "https:\/\/3\.basecamp\.com/);
 	assert.match(note, /\nproject: "Marketing\/Ops"\n/);
 	assert.match(note, /\n# Launch "plan"\n\nBody\n\n## Comments\n\n\*\*Sam\*\* · \[Nov 14, 2026, \d+:02 [AP]M\]\(https:\/\/c\)\n\nNice\n$/);
+});
+
+test('notes carry a fingerprint that notices edits', () => {
+	const note = renderNote({
+		id: 1, title: 'T', content: '<div>body</div>', created_at: '2026-11-01T10:00:00Z', updated_at: '2026-11-01T10:00:00Z',
+		app_url: 'u', comments_count: 0, comments_url: 'c', creator: { id: 1, name: 'Jane' }, bucket: { id: 9, name: 'P' },
+	}, [], h => h.replace(/<[^>]+>/g, ''));
+	assert.match(note, /\nbulletin_hash: "[0-9a-f]+"\n---\n/);
+	assert.equal(isUntouched(note), true);
+	assert.equal(isUntouched(note.replace('body', 'body edited')), false);
+	assert.equal(isUntouched(note.replace(/bulletin_hash.*\n/, '')), false);
 });

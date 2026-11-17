@@ -77,7 +77,17 @@ export function renderNote(msg: Message, comments: Comment[], toMarkdown: ToMark
 			out.push(toMarkdown(prepareHtml(c.content ?? '')).trim(), '');
 		}
 	}
-	return out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+	const note = out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+	// Fingerprint of the note as written, kept in the note so it survives a reinstall.
+	return note.replace(/\n---\n/, `\nbulletin_hash: "${hash(note)}"\n---\n`);
+}
+
+const HASH_LINE = /^bulletin_hash: "([0-9a-f]+)"\n/m;
+
+/** True if the note still matches the fingerprint Bulletin wrote into it. */
+export function isUntouched(content: string): boolean {
+	const m = HASH_LINE.exec(content);
+	return !!m && hash(content.replace(HASH_LINE, '')) === m[1];
 }
 
 /** Cheap content fingerprint, used to notice local edits. */

@@ -1,6 +1,6 @@
 {
   "name": "obsidian-bulletin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pull message boards and their comments from Basecamp into your vault.",
   "main": "main.js",
   "private": true,
