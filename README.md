@@ -27,7 +27,7 @@ Bulletin only reads from Basecamp. It never creates, edits or deletes anything t
 ## Requirements
 
 - A Basecamp account.
-- Obsidian 1.11.4 or later, **on desktop**. Mobile isn't supported yet: signing in uses a local web
+- Obsidian 1.13.1 or later, **on desktop**. Mobile isn't supported yet: signing in uses a local web
   server on your computer, which phones don't allow.
 
 ## Getting started

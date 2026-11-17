@@ -1,4 +1,4 @@
-import { App, htmlToMarkdown, normalizePath, Notice, Plugin, PluginSettingTab, requestUrl, Setting, TFile } from 'obsidian';
+import { App, htmlToMarkdown, normalizePath, Notice, Plugin, PluginSettingTab, requestUrl, SettingDefinitionItem, SettingGroupItem, TFile } from 'obsidian';
 import { Basecamp, Project } from './api';
 import { login, refresh, registerClient, Tokens } from './auth';
 import { Http, lowercaseKeys } from './http';
@@ -184,81 +184,115 @@ export default class BulletinPlugin extends Plugin {
 
 class SettingsTab extends PluginSettingTab {
 	private projects: Project[] | null = null;
+	private projectsError: string | null = null;
+	private loadingProjects = false;
 
 	constructor(app: App, private plugin: BulletinPlugin) {
 		super(app, plugin);
 	}
 
-	display() {
-		const { containerEl } = this;
+	getSettingDefinitions(): SettingDefinitionItem[] {
 		const s = this.plugin.data.settings;
-		containerEl.empty();
+		const connected = this.plugin.isConnected();
+		const items: SettingDefinitionItem[] = [
+			{
+				name: 'Basecamp account',
+				desc: connected
+					? `Connected to ${s.accountName}. Read-only access.`
+					: 'Opens Basecamp in your browser to approve read-only access to one account.',
+				render: setting => {
+					if (connected) {
+						setting.addButton(b => b.setButtonText('Disconnect').onClick(async () => {
+							await this.plugin.disconnect();
+							this.projects = null;
+							this.update();
+						}));
+					} else {
+						setting.addButton(b => b.setButtonText('Connect').setCta().onClick(async () => {
+							b.setDisabled(true).setButtonText('Waiting for browser…');
+							try { await this.plugin.connect(); }
+							catch (e) { new Notice(`Couldn't connect: ${(e as Error).message}`, 10000); }
+							this.update();
+						}));
+					}
+				},
+			},
+			{
+				name: 'Folder',
+				desc: 'Messages go in <folder>/<project>/Messages/.',
+				control: { type: 'text', key: 'folder', placeholder: 'Basecamp' },
+			},
+		];
+		if (!connected) return items;
 
-		const account = new Setting(containerEl).setName('Basecamp account');
-		if (this.plugin.isConnected()) {
-			account.setDesc(`Connected to ${s.accountName}. Read-only access.`)
-				.addButton(b => b.setButtonText('Disconnect').onClick(async () => {
-					await this.plugin.disconnect();
-					this.projects = null;
-					this.display();
-				}));
+		items.push({
+			type: 'group',
+			heading: 'Projects',
+			items: [{ name: 'All projects', desc: 'Turn off to pick projects.', control: { type: 'toggle', key: 'allProjects' } }],
+		});
+		if (s.projectIds.length === 0) return items;
+
+		let projectItems: SettingGroupItem[];
+		if (this.projects) {
+			projectItems = this.projects.map(p => ({ name: p.name, control: { type: 'toggle', key: `project:${p.id}` } }));
+		} else if (this.projectsError) {
+			projectItems = [{ name: `Couldn't load projects: ${this.projectsError}`, searchable: false }];
 		} else {
-			account.setDesc('Opens Basecamp in your browser to approve read-only access to one account.')
-				.addButton(b => b.setButtonText('Connect').setCta().onClick(async () => {
-					b.setDisabled(true).setButtonText('Waiting for browser…');
-					try { await this.plugin.connect(); }
-					catch (e) { new Notice(`Couldn't connect: ${(e as Error).message}`, 10000); }
-					this.display();
-				}));
+			// Fetch only once the tab is actually shown, not when Obsidian indexes it for search.
+			projectItems = [{ name: 'Loading projects…', searchable: false, render: () => { this.loadProjects(); } }];
 		}
-
-		new Setting(containerEl)
-			.setName('Folder')
-			.setDesc('Messages go in <folder>/<project>/Messages/.')
-			.addText(t => t.setPlaceholder('Basecamp').setValue(s.folder).onChange(async v => {
-				s.folder = v.trim();
-				await this.plugin.save();
-			}));
-
-		if (!this.plugin.isConnected()) return;
-
-		new Setting(containerEl).setName('Projects').setHeading();
-		new Setting(containerEl)
-			.setName('All projects')
-			.setDesc('Turn off to pick projects.')
-			.addToggle(t => t.setValue(s.projectIds.length === 0).onChange(async all => {
-				if (!all) {
-					this.projects ??= await this.plugin.client().projects();
-					s.projectIds = this.projects.map(p => p.id);
-				} else {
-					s.projectIds = [];
-				}
-				await this.projectsChanged();
-			}));
-
-		if (s.projectIds.length === 0) return;
-		const list = containerEl.createDiv();
-		const render = (projects: Project[]) => {
-			for (const p of projects) {
-				new Setting(list).setName(p.name).addToggle(t => t.setValue(s.projectIds.includes(p.id)).onChange(async on => {
-					s.projectIds = on ? [...s.projectIds, p.id] : s.projectIds.filter(id => id !== p.id);
-					if (s.projectIds.length === 0) s.projectIds = [p.id]; // empty would mean "all"
-					await this.projectsChanged();
-				}));
-			}
-		};
-		if (this.projects) render(this.projects);
-		else {
-			list.setText('Loading projects…');
-			this.plugin.client().projects().then(p => { this.projects = p; list.empty(); render(p); })
-				.catch(e => list.setText(`Couldn't load projects: ${(e as Error).message}`));
-		}
+		items.push({
+			type: 'group',
+			items: projectItems,
+			search: this.projects ? { placeholder: 'Filter projects', match: (def, q) => def.name.toLowerCase().includes(q.toLowerCase()) } : undefined,
+		});
+		return items;
 	}
 
-	private async projectsChanged() {
+	getControlValue(key: string): unknown {
+		const s = this.plugin.data.settings;
+		if (key === 'folder') return s.folder;
+		if (key === 'allProjects') return s.projectIds.length === 0;
+		if (key.startsWith('project:')) return s.projectIds.includes(Number(key.slice(8)));
+		return undefined;
+	}
+
+	async setControlValue(key: string, value: unknown) {
+		const s = this.plugin.data.settings;
+		if (key === 'folder') {
+			s.folder = String(value).trim();
+			await this.plugin.save();
+			return;
+		}
+		if (key === 'allProjects') {
+			if (value) s.projectIds = [];
+			else {
+				try { this.projects ??= await this.plugin.client().projects(); }
+				catch (e) { new Notice(`Couldn't load projects: ${(e as Error).message}`, 10000); this.update(); return; }
+				s.projectIds = this.projects.map(p => p.id);
+			}
+		} else if (key.startsWith('project:')) {
+			const id = Number(key.slice(8));
+			s.projectIds = value ? [...s.projectIds, id] : s.projectIds.filter(x => x !== id);
+			if (s.projectIds.length === 0) s.projectIds = [id]; // empty would mean "all"
+		} else return;
 		// Newly picked projects can have messages older than the cursor; look at everything next time.
 		this.plugin.data.state.cursor = null;
 		await this.plugin.save();
-		this.display();
+		this.update();
+	}
+
+	hide() {
+		super.hide();
+		this.projectsError = null; // try again next time the tab opens
+	}
+
+	private loadProjects() {
+		if (this.loadingProjects) return;
+		this.loadingProjects = true;
+		this.plugin.client().projects()
+			.then(p => { this.projects = p; this.projectsError = null; })
+			.catch(e => { this.projectsError = (e as Error).message; })
+			.finally(() => { this.loadingProjects = false; this.update(); });
 	}
 }
