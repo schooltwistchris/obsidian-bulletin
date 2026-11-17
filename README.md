@@ -64,6 +64,9 @@ Also:
 - **Where your sign-in is kept.** Access tokens are stored in Obsidian's secret storage on this
   device, not in the plugin's settings file, so they don't travel with your vault. Connect once on
   each computer.
+- **Finding its own notes.** If Bulletin loses track of a note (after a reinstall, or if you move
+  it), it checks your notes' properties for a matching `basecamp_id`. It reads file names and
+  properties only, never note contents.
 - **No telemetry.** Bulletin has no analytics or tracking, and no server of its own. Your data goes
   from Basecamp straight into your vault.
 - **Disconnecting** removes the sign-in from this device. To revoke Bulletin's access entirely,
