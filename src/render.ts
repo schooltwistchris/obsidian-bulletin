@@ -67,14 +67,18 @@ export function renderNote(msg: Message, comments: Comment[], toMarkdown: ToMark
 	if (msg.category?.name) fm.push(['category', msg.category.name]);
 	fm.push(['created', msg.created_at], ['updated', msg.updated_at], ['comments', comments.length]);
 
-	const out = ['---', ...fm.map(([k, v]) => `${k}: ${yaml(v)}`), '---', '', `# ${msg.title}`, ''];
+	// cssclasses lets themes style Bulletin's notes without guessing which notes they are.
+	const out = ['---', ...fm.map(([k, v]) => `${k}: ${yaml(v)}`), 'cssclasses:', '  - bulletin', '---', '', `# ${msg.title}`, ''];
 	out.push(toMarkdown(prepareHtml(msg.content ?? '')).trim(), '');
 
 	if (comments.length) {
 		out.push('## Comments', '');
+		// Each comment is a callout, so it reads as its own entry in editing and reading view alike.
 		for (const c of comments) {
-			out.push(`**${c.creator.name}** · [${when(c.created_at)}](${c.app_url})`, '');
-			out.push(toMarkdown(prepareHtml(c.content ?? '')).trim(), '');
+			const body = toMarkdown(prepareHtml(c.content ?? '')).trim();
+			out.push(`> [!comment] **${c.creator.name}** · [${when(c.created_at)}](${c.app_url})`);
+			if (body) out.push(...body.split('\n').map(line => (line ? `> ${line}` : '>')));
+			out.push('');
 		}
 	}
 	const note = out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';

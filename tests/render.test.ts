@@ -44,7 +44,17 @@ test('note has quoted frontmatter, body and comments', () => {
 	const note = renderNote(msg, [{ id: 7, content: '<div>Nice</div>', created_at: '2026-11-14T19:02:00Z', app_url: 'https://c', creator: { id: 3, name: 'Sam' } }], strip);
 	assert.match(note, /^---\nbasecamp_id: 42\nbasecamp_url: "https:\/\/3\.basecamp\.com/);
 	assert.match(note, /\nproject: "Marketing\/Ops"\n/);
-	assert.match(note, /\n# Launch "plan"\n\nBody\n\n## Comments\n\n\*\*Sam\*\* · \[Nov 14, 2026, \d+:02 [AP]M\]\(https:\/\/c\)\n\nNice\n$/);
+	assert.match(note, /\ncssclasses:\n  - bulletin\nbulletin_hash: "[0-9a-f]+"\n---\n/);
+	assert.match(note, /\n# Launch "plan"\n\nBody\n\n## Comments\n\n> \[!comment\] \*\*Sam\*\* · \[Nov 14, 2026, \d+:02 [AP]M\]\(https:\/\/c\)\n> Nice\n$/);
+});
+
+test('comments with several paragraphs stay inside one callout', () => {
+	const md = (h: string) => h.replace(/<\/p><p>/g, '\n\n').replace(/<[^>]+>/g, '');
+	const note = renderNote(msg, [
+		{ id: 7, content: '<p>One</p><p>Two</p>', created_at: '2026-11-14T19:02:00Z', app_url: 'https://c', creator: { id: 3, name: 'Sam' } },
+		{ id: 8, content: '', created_at: '2026-11-14T19:05:00Z', app_url: 'https://d', creator: { id: 4, name: 'Ana' } },
+	], md);
+	assert.match(note, /\n> \[!comment\] \*\*Sam\*\*[^\n]*\n> One\n>\n> Two\n\n> \[!comment\] \*\*Ana\*\*[^\n]*\n$/);
 });
 
 test('notes carry a fingerprint that notices edits', () => {
