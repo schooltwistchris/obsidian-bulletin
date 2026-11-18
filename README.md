@@ -8,10 +8,13 @@ by 37signals.
 ## What it does
 
 - Writes one note per message: `Basecamp/<Project>/Messages/<date> <title>.md`.
-- Puts the message's comments under a **Comments** heading in the same note.
+- Puts the message's comments under a **Comments** heading in the same note. Each comment is a
+  `[!comment]` callout with the author and date as its title, so comments stay apart in both editing
+  and reading view. Notes written by an older version switch to this layout the next time their
+  message changes in Basecamp.
 - Adds properties: `basecamp_id`, `basecamp_url`, `project`, `author`, `created`, `updated` and
   `comments`, plus `bulletin_hash`, a fingerprint Bulletin uses to tell whether you've edited the
-  note.
+  note, and `cssclasses: bulletin`, so themes and CSS snippets can style Bulletin's notes.
 - Converts Basecamp formatting to Markdown. Mentions become `@Name` and highlights become
   `==highlight==`. Images and files become links back to Basecamp; they aren't downloaded.
 - On later pulls, fetches only messages that are new or have changed since the last pull, including
