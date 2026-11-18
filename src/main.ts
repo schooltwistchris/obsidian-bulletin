@@ -34,6 +34,8 @@ export default class BulletinPlugin extends Plugin {
 	data: Data = structuredClone(DEFAULTS);
 	private pulling = false;
 	private refreshing: Promise<string> | null = null;
+	/** Set while a sign-in is waiting for the browser, so unloading can cancel it. */
+	private signingIn: AbortController | null = null;
 
 	async onload() {
 		const saved = (await this.loadData()) as Partial<Data> | null;
@@ -45,6 +47,11 @@ export default class BulletinPlugin extends Plugin {
 		this.addCommand({ id: 'pull', name: 'Pull new and changed messages', callback: () => this.runPull(false) });
 		this.addCommand({ id: 'pull-full', name: 'Check every message again', callback: () => this.runPull(true) });
 		this.addSettingTab(new SettingsTab(this.app, this));
+	}
+
+	onunload() {
+		// Close the sign-in listener now instead of leaving it open until it times out.
+		this.signingIn?.abort();
 	}
 
 	async save() {
@@ -95,7 +102,13 @@ export default class BulletinPlugin extends Plugin {
 			await this.save();
 		}
 		new Notice('Approve access in your browser, then come back here.');
-		const tokens = await login(obsidianHttp, s.clientId, url => window.open(url));
+		this.signingIn = new AbortController();
+		let tokens: Tokens;
+		try {
+			tokens = await login(obsidianHttp, s.clientId, url => window.open(url), this.signingIn.signal);
+		} finally {
+			this.signingIn = null;
+		}
 		this.writeTokens(tokens);
 		const account = await this.client().account();
 		if (s.accountId !== account.id) {

@@ -52,8 +52,8 @@ const DONE_PAGE = `<!doctype html><meta charset="utf-8"><title>Bulletin</title>
 <body style="font-family:system-ui;padding:3em;text-align:center">
 <h2>Connected</h2><p>You can close this tab and go back to Obsidian.</p></body>`;
 
-/** Runs the browser login and resolves with tokens. */
-export async function login(fetch: Http, clientId: string, openBrowser: (url: string) => void): Promise<Tokens> {
+/** Runs the browser login and resolves with tokens. Aborting `signal` stops it and closes the listener. */
+export async function login(fetch: Http, clientId: string, openBrowser: (url: string) => void, signal?: AbortSignal): Promise<Tokens> {
 	const { verifier, challenge } = await pkce();
 	const state = base64url(crypto.getRandomValues(new Uint8Array(16)));
 
@@ -68,6 +68,9 @@ export async function login(fetch: Http, clientId: string, openBrowser: (url: st
 	try {
 		const codePromise = new Promise<string>((resolve, reject) => {
 			const timer = window.setTimeout(() => reject(new Error('Login timed out. Try connecting again.')), LOGIN_TIMEOUT_MS);
+			const cancel = () => { window.clearTimeout(timer); reject(new Error('Sign-in was cancelled.')); };
+			if (signal?.aborted) cancel();
+			signal?.addEventListener('abort', cancel, { once: true });
 			server.on('request', (req, res) => {
 				const url = new URL(req.url ?? '/', redirectUri);
 				if (url.pathname !== '/callback') { res.writeHead(404).end(); return; }
@@ -103,6 +106,7 @@ export async function login(fetch: Http, clientId: string, openBrowser: (url: st
 		});
 	} finally {
 		server.close();
+		server.closeAllConnections(); // don't let a browser keep-alive hold the port open
 	}
 }
 
